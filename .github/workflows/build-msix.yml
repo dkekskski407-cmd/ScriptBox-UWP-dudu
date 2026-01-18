@@ -22,10 +22,19 @@ jobs:
       run: |
         Expand-Archive ScriptBoxPackage-aligned-originals.zip WORK
 
+    - name: Locate Windows SDK tools
+      shell: powershell
+      run: |
+        $sdk = "C:\Program Files (x86)\Windows Kits\10\bin\x64"
+        if (!(Test-Path "$sdk\makeappx.exe")) { throw "makeappx.exe not found" }
+        if (!(Test-Path "$sdk\signtool.exe")) { throw "signtool.exe not found" }
+        echo "SDK tools found"
+
     - name: Create MSIX
       shell: powershell
       run: |
-        makeappx.exe pack `
+        $sdk = "C:\Program Files (x86)\Windows Kits\10\bin\x64"
+        & "$sdk\makeappx.exe" pack `
           /d WORK `
           /p OUTPUT/ScriptBox.msix `
           /o
@@ -39,7 +48,8 @@ jobs:
     - name: Sign MSIX
       shell: powershell
       run: |
-        signtool sign `
+        $sdk = "C:\Program Files (x86)\Windows Kits\10\bin\x64"
+        & "$sdk\signtool.exe" sign `
           /fd SHA256 `
           /f signing.pfx `
           /p "${{ secrets.PFX_PASSWORD }}" `
