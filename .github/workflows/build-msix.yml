@@ -1,94 +1,70 @@
-name: Build and Sign MSIX (from ZIP)
+- name: Fix AppxManifest.xml and Create MSIX
+  shell: powershell
+  run: |
+    $manifest = @'
+    <?xml version="1.0" encoding="utf-8"?>
+    <Package
+      xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+      xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+      xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+      IgnorableNamespaces="uap rescap">
 
-on:
-  workflow_dispatch:
-  push:
-    branches: [ "main" ]
+      <Identity
+        Name="ScriptBox.UWP"
+        Publisher="CN=ScriptBox"
+        Version="1.0.0.0" />
 
-jobs:
-  build:
-    runs-on: windows-latest
+      <Properties>
+        <DisplayName>ScriptBox</DisplayName>
+        <PublisherDisplayName>ScriptBox Dev</PublisherDisplayName>
+        <Logo>Assets\StoreLogo.png</Logo>
+        <Description>ScriptBox UWP application packaged for MSIX sideloading</Description>
+      </Properties>
 
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      <Dependencies>
+        <TargetDeviceFamily
+          Name="Windows.Universal"
+          MinVersion="10.0.17763.0"
+          MaxVersionTested="10.0.26100.0" />
+      </Dependencies>
 
-      - name: Prepare folders
-        shell: powershell
-        run: |
-          New-Item -ItemType Directory -Force -Path work | Out-Null
-          New-Item -ItemType Directory -Force -Path output | Out-Null
+      <Resources>
+        <Resource Language="en-us" />
+      </Resources>
 
-      - name: Extract package ZIP
-        shell: powershell
-        run: |
-          Expand-Archive ScriptBoxPackage-aligned-originals.zip work -Force
+      <Applications>
+        <Application
+          Id="App"
+          Executable="ScriptBox.exe"
+          EntryPoint="Windows.FullTrustApplication">
+          <uap:VisualElements
+            DisplayName="ScriptBox"
+            Description="ScriptBox UWP Application"
+            BackgroundColor="transparent"
+            Square150x150Logo="Assets\Square150x150Logo.png"
+            Square44x44Logo="Assets\Square44x44Logo.png" />
+        </Application>
+      </Applications>
 
-      - name: Fix AppxManifest.xml and Create MSIX
-        shell: powershell
-        run: |
-          $manifest = @'
-          <?xml version="1.0" encoding="utf-8"?>
-          <Package
-            xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
-            xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
-            xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-            IgnorableNamespaces="uap rescap">
+      <Capabilities>
+        <rescap:Capability Name="runFullTrust" />
+      </Capabilities>
 
-            <Identity
-              Name="ScriptBox.UWP"
-              Publisher="CN=ScriptBox"
-              Version="1.0.0.0" />
+    </Package>
+    '@
 
-            <Properties>
-              <DisplayName>ScriptBox</DisplayName>
-              <PublisherDisplayName>ScriptBox Dev</PublisherDisplayName>
-              <Logo>Assets\StoreLogo.png</Logo>
-              <Description>ScriptBox UWP application packaged for MSIX sideloading</Description>
-            </Properties>
+    $manifest | Out-File -Encoding utf8 work\AppxManifest.xml
 
-            <Dependencies>
-              <TargetDeviceFamily
-                Name="Windows.Universal"
-                MinVersion="10.0.17763.0"
-                MaxVersionTested="10.0.26100.0" />
-            </Dependencies>
+    # localizar makeappx.exe dinamicamente
+    $makeappx = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter makeappx.exe |
+                Sort-Object FullName -Descending |
+                Select-Object -First 1
 
-            <Resources>
-              <Resource Language="en-us" />
-            </Resources>
+    if (-not $makeappx) {
+      throw "makeappx.exe não encontrado no runner"
+    }
 
-            <Applications>
-              <Application
-                Id="App"
-                Executable="ScriptBox.exe"
-                EntryPoint="Windows.FullTrustApplication">
-                <uap:VisualElements
-                  DisplayName="ScriptBox"
-                  Description="ScriptBox UWP Application"
-                  BackgroundColor="transparent"
-                  Square150x150Logo="Assets\Square150x150Logo.png"
-                  Square44x44Logo="Assets\Square44x44Logo.png" />
-              </Application>
-            </Applications>
-
-            <Capabilities>
-              <rescap:Capability Name="runFullTrust" />
-            </Capabilities>
-
-          </Package>
-          '@
-
-          $manifest | Out-File -Encoding utf8 work\AppxManifest.xml
-
-          $sdk = "C:\Program Files (x86)\Windows Kits\10\bin\x64"
-          & "$sdk\makeappx.exe" pack `
-            /d work `
-            /p output\ScriptBox.msix `
-            /o
-
-      - name: Upload MSIX
-        uses: actions/upload-artifact@v4
-        with:
-          name: ScriptBox-MSIX
-          path: output/ScriptBox.msix
+    & $makeappx.FullName pack `
+      /d work `
+      /p output\ScriptBox.msix `
+      /o
