@@ -22,10 +22,10 @@ jobs:
         run: |
           Expand-Archive ScriptBoxPackage-aligned-originals.zip work -Force
 
-      - name: Fix AppxManifest.xml and Create MSIX
+      - name: Write AppxManifest.xml
         shell: powershell
         run: |
-          $manifest = @'
+          $xml = @"
 <?xml version="1.0" encoding="utf-8"?>
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
@@ -75,10 +75,13 @@ jobs:
   </Capabilities>
 
 </Package>
-'@
+"@
 
-          $manifest | Out-File -Encoding utf8 work\AppxManifest.xml
+          $xml | Out-File -Encoding utf8 work\AppxManifest.xml
 
+      - name: Create MSIX
+        shell: powershell
+        run: |
           $makeappx = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter makeappx.exe |
                       Sort-Object FullName -Descending |
                       Select-Object -First 1
