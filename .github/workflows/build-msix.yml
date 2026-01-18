@@ -11,40 +11,48 @@ jobs:
     - name: Checkout repo
       uses: actions/checkout@v4
 
+    # 1️⃣ Instalar Windows SDK (inclui makeappx e signtool)
+    - name: Install Windows SDK
+      shell: powershell
+      run: |
+        choco install windows-sdk-10.0 --yes --no-progress
+
+    # 2️⃣ Criar pastas
     - name: Prepare folders
       shell: powershell
       run: |
-        mkdir WORK
-        mkdir OUTPUT
+        mkdir work
+        mkdir output
 
+    # 3️⃣ Extrair o ZIP do pacote
     - name: Extract package ZIP
       shell: powershell
       run: |
-        Expand-Archive ScriptBoxPackage-aligned-originals.zip WORK
+        Expand-Archive ScriptBoxPackage-aligned-originals.zip work -Force
 
-    - name: Locate Windows SDK tools
-      shell: powershell
-      run: |
-        $sdk = "C:\Program Files (x86)\Windows Kits\10\bin\x64"
-        if (!(Test-Path "$sdk\makeappx.exe")) { throw "makeappx.exe not found" }
-        if (!(Test-Path "$sdk\signtool.exe")) { throw "signtool.exe not found" }
-        echo "SDK tools found"
-
+    # 4️⃣ Criar MSIX
     - name: Create MSIX
       shell: powershell
       run: |
         $sdk = "C:\Program Files (x86)\Windows Kits\10\bin\x64"
+        if (!(Test-Path "$sdk\makeappx.exe")) {
+          Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse | Where-Object Name -eq makeappx.exe
+          throw "makeappx.exe still not found"
+        }
+
         & "$sdk\makeappx.exe" pack `
-          /d WORK `
-          /p OUTPUT/ScriptBox.msix `
+          /d work `
+          /p output/ScriptBox.msix `
           /o
 
+    # 5️⃣ Decodificar certificado
     - name: Decode PFX
       shell: powershell
       run: |
         $bytes = [Convert]::FromBase64String("${{ secrets.PFX_BASE64 }}")
         [IO.File]::WriteAllBytes("signing.pfx", $bytes)
 
+    # 6️⃣ Assinar MSIX
     - name: Sign MSIX
       shell: powershell
       run: |
@@ -53,10 +61,11 @@ jobs:
           /fd SHA256 `
           /f signing.pfx `
           /p "${{ secrets.PFX_PASSWORD }}" `
-          OUTPUT/ScriptBox.msix
+          output/ScriptBox.msix
 
+    # 7️⃣ Upload do MSIX
     - name: Upload MSIX
       uses: actions/upload-artifact@v4
       with:
         name: ScriptBox-MSIX
-        path: OUTPUT/ScriptBox.msix
+        path: output/ScriptBox.msix
