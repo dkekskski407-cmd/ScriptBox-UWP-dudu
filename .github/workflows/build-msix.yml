@@ -1,71 +1,70 @@
-name: Build and Sign MSIX (from ZIP)
+- name: Fix AppxManifest.xml and Create MSIX
+  shell: powershell
+  run: |
+    # ---------- Corrigir AppxManifest.xml ----------
+    $manifest = @'
+<?xml version="1.0" encoding="utf-8"?>
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
 
-on:
-  workflow_dispatch:
+  <Identity
+    Name="ScriptBox.UWP"
+    Publisher="CN=ScriptBox"
+    Version="1.0.0.0" />
 
-jobs:
-  build:
-    runs-on: windows-latest
+  <Properties>
+    <DisplayName>ScriptBox</DisplayName>
+    <PublisherDisplayName>ScriptBox Dev</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <Description>ScriptBox UWP application packaged for MSIX sideloading</Description>
+  </Properties>
 
-    steps:
-    - name: Checkout repo
-      uses: actions/checkout@v4
+  <Dependencies>
+    <TargetDeviceFamily
+      Name="Windows.Universal"
+      MinVersion="10.0.17763.0"
+      MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
 
-    # 1️⃣ Instalar Windows SDK (inclui makeappx e signtool)
-    - name: Install Windows SDK
-      shell: powershell
-      run: |
-        choco install windows-sdk-10.0 --yes --no-progress
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
 
-    # 2️⃣ Criar pastas
-    - name: Prepare folders
-      shell: powershell
-      run: |
-        mkdir work
-        mkdir output
+  <Applications>
+    <Application
+      Id="App"
+      Executable="ScriptBox.exe"
+      EntryPoint="Windows.FullTrustApplication">
 
-    # 3️⃣ Extrair o ZIP do pacote
-    - name: Extract package ZIP
-      shell: powershell
-      run: |
-        Expand-Archive ScriptBoxPackage-aligned-originals.zip work -Force
+      <uap:VisualElements
+        DisplayName="ScriptBox"
+        Description="ScriptBox UWP Application"
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png" />
+    </Application>
+  </Applications>
 
-    # 4️⃣ Criar MSIX
-    - name: Create MSIX
-      shell: powershell
-      run: |
-        $sdk = "C:\Program Files (x86)\Windows Kits\10\bin\x64"
-        if (!(Test-Path "$sdk\makeappx.exe")) {
-          Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse | Where-Object Name -eq makeappx.exe
-          throw "makeappx.exe still not found"
-        }
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
 
-        & "$sdk\makeappx.exe" pack `
-          /d work `
-          /p output/ScriptBox.msix `
-          /o
+</Package>
+'@
 
-    # 5️⃣ Decodificar certificado
-    - name: Decode PFX
-      shell: powershell
-      run: |
-        $bytes = [Convert]::FromBase64String("${{ secrets.PFX_BASE64 }}")
-        [IO.File]::WriteAllBytes("signing.pfx", $bytes)
+    $manifest | Out-File -Encoding utf8 work\AppxManifest.xml
 
-    # 6️⃣ Assinar MSIX
-    - name: Sign MSIX
-      shell: powershell
-      run: |
-        $sdk = "C:\Program Files (x86)\Windows Kits\10\bin\x64"
-        & "$sdk\signtool.exe" sign `
-          /fd SHA256 `
-          /f signing.pfx `
-          /p "${{ secrets.PFX_PASSWORD }}" `
-          output/ScriptBox.msix
+    # ---------- Criar MSIX ----------
+    $sdk = "C:\Program Files (x86)\Windows Kits\10\bin\x64"
 
-    # 7️⃣ Upload do MSIX
-    - name: Upload MSIX
-      uses: actions/upload-artifact@v4
-      with:
-        name: ScriptBox-MSIX
-        path: output/ScriptBox.msix
+    if (!(Test-Path "$sdk\makeappx.exe")) {
+      throw "makeappx.exe not found in Windows SDK"
+    }
+
+    & "$sdk\makeappx.exe" pack `
+      /d work `
+      /p output\ScriptBox.msix `
+      /o
